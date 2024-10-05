@@ -1,0 +1,39 @@
+import requests
+
+def get_gemini_response(user_input):
+    url = "GEMINI_API_URL"  # Replace with actual Gemini API URL
+    headers = {
+        "Authorization": f"Bearer YOUR_API_KEY",  # Replace with your actual API key
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "prompt": user_input,
+        "max_tokens": 150,  # Adjust as needed
+        "temperature": 0.7,  # Adjust for creativity
+        "top_p": 1.0,
+        "frequency_penalty": 0,
+        "presence_penalty": 0
+    }
+    
+    response = requests.post(url, headers=headers, json=payload)
+    
+    if response.status_code == 200:
+        return response.json().get("choices")[0].get("text").strip()
+    else:
+        return "Sorry, I couldn't get a response from Gemini."
+
+def main():
+    print("Welcome to your conversation with Gemini! Type 'exit' to end the chat.")
+    
+    while True:
+        user_input = input("You: ")
+        
+        if user_input.lower() == 'exit':
+            print("Gemini: It was great discussing with you! See you next time!")
+            break
+        
+        response = get_gemini_response(user_input)
+        print(f"Gemini: {response}")
+
+if __name__ == "__main__":
+    main()
