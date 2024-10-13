@@ -1,7 +1,13 @@
 import google.generativeai as genai
 
 # Configure the generative model
-genai.configure(api_key="AIzaSyCo0Qlg7StwWsKLrQ5UG5LTQIWqRTqTduI")
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+my_api_key = os.getenv("API_KEY")
+genai.configure(api_key=my_api_key)
 model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
 def calculate_accuracyscore(answer, prev_question):
