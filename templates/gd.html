@@ -136,6 +136,54 @@
             font-size: 1rem;
             color: #ccc;
         }
+        .turn-indicator {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 10px;
+            margin-bottom: 10px;
+            text-align: center;
+            color: #4CAF50;
+            font-weight: bold;
+            animation: pulse 2s infinite;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .speaking-status {
+            font-size: 0.9em;
+            color: #FFA500;
+            font-style: italic;
+        }
+
+        @keyframes pulse {
+            0% { opacity: 0.6; }
+            50% { opacity: 1; }
+            100% { opacity: 0.6; }
+        }
+
+        .typing-animation {
+            overflow: hidden;
+            white-space: pre-wrap;
+            animation: typing 0.05s steps(1);
+        }
+
+        .message.generating {
+            position: relative;
+        }
+
+        .message.generating::after {
+            content: "...";
+            position: absolute;
+            right: 10px;
+            animation: ellipsis 1.5s infinite;
+        }
+
+        @keyframes ellipsis {
+            0% { content: "."; }
+            33% { content: ".."; }
+            66% { content: "..."; }
+        }
     </style>
 </head>
 <body style="display: block;">
@@ -155,12 +203,18 @@
     <!-- Topic Display -->
     <div id="topic-display" class="chat-title"></div>
     
+    <!-- Turn Indicator -->
+    <div id="turn-indicator" class="turn-indicator">
+        <div id="current-turn">User's turn to speak</div>
+        <div id="speaking-status" class="speaking-status"></div>
+    </div>
+
     <!-- Chat Box for LLMs and User -->
     <div id="chat-box" class="chat-box">
         <!-- Initial Messages (LLM) -->
-        <div class="message message-llm">
+        <!-- <div class="message message-llm">
             <strong>LLM:</strong> Hi, I'm LLM. Let's discuss!
-        </div>
+        </div> -->
     </div>
 
     <!-- Response Input Section -->
@@ -170,10 +224,48 @@
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.9.1/gsap.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/typewriter-effect@2.18.0/dist/core.js"></script>
 <script>
+    // Add this function before the existing JavaScript code
+    async function typeMessage(element, text, speed = 30) {
+        let index = 0;
+        element.classList.add('generating');
+        
+        return new Promise(resolve => {
+            function addChar() {
+                if (index < text.length) {
+                    element.textContent += text.charAt(index);
+                    index++;
+                    setTimeout(addChar, speed);
+                } else {
+                    element.classList.remove('generating');
+                    resolve();
+                }
+            }
+            addChar();
+        });
+    }
+
+    async function addMessageToChat(sender, message, className) {
+        const chatBox = document.getElementById("chat-box");
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `message ${className}`;
+        const senderSpan = document.createElement("strong");
+        senderSpan.textContent = sender + ": ";
+        messageDiv.appendChild(senderSpan);
+        
+        const messageContent = document.createElement("span");
+        messageDiv.appendChild(messageContent);
+        chatBox.appendChild(messageDiv);
+        
+        if (className === 'message-llm') {
+            await typeMessage(messageContent, message);
+        } else {
+            messageContent.textContent = message;
+        }
+        
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
     const topics = [
         "The impact of social media on society",
         "Climate change and its effects",
@@ -196,31 +288,31 @@
         }
     });
 
-    function submitResponse() {
+    async function submitResponse() {
         const userInput = document.getElementById("user-input").value;
 
         if (userInput.trim() !== "") {
+            // Disable input while LLMs are responding
+            document.getElementById("user-input").disabled = true;
+            document.getElementById("submit-response").disabled = true;
+            
+            updateTurnIndicator('LLMs', 'next');
             addMessageToChat("User", userInput, "message-user");
-            document.getElementById("user-input").value = ""; // Clear input field
-            llmResponse(userInput); // Get response from LLM
+            document.getElementById("user-input").value = "";
+
+            // Random delay before LLM responses (0.5 to 1.5 seconds)
+            await new Promise(resolve => setTimeout(resolve, Math.random() * 1000 + 500));
+            await getLLMResponses(userInput);
+            
+            // Enable input after all responses are shown
+            document.getElementById("user-input").disabled = false;
+            document.getElementById("submit-response").disabled = false;
         }
     }
 
-    function addMessageToChat(sender, message, className) {
-        const chatBox = document.getElementById("chat-box");
-
-        const messageDiv = document.createElement("div");
-        messageDiv.className = `message ${className}`;
-        messageDiv.innerHTML = `<strong>${sender}:</strong> ${message}`;
-
-        chatBox.appendChild(messageDiv);
-
-        chatBox.scrollTop = chatBox.scrollHeight;
-    }
-
-    async function llmResponse(userInput) {
+    async function getLLMResponses(userInput) {
         try {
-            const response = await fetch('/generate_gemini_response', {
+            const response = await fetch('/generate_group_response', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
@@ -229,12 +321,84 @@
             });
 
             const data = await response.json();
-            const responseText = data.response;
-            const llmName = (document.querySelectorAll('.message-llm').length % 2 === 0) ? "ALICE" : "BOB";
-            addMessageToChat(llmName, responseText, "message-llm");
+            
+            // Process responses sequentially
+            for (let i = 0; i < data.responses.length; i++) {
+                const llmResponse = data.responses[i];
+                const isLastResponse = i === data.responses.length - 1;
+                
+                // Show who is speaking
+                updateTurnIndicator(llmResponse.name, 'speaking');
+                
+                // Wait for typing animation to complete
+                await new Promise(resolve => setTimeout(resolve, 500)); // Small pause before starting
+                await addMessageToChat(llmResponse.name, llmResponse.content, "message-llm");
+                
+                // Pause after each response to simulate reading time
+                if (!isLastResponse) {
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+            
+            // After all responses, set turn back to user
+            updateTurnIndicator('User', 'next');
+            document.getElementById("user-input").disabled = false;
+            document.getElementById("submit-response").disabled = false;
+            
         } catch (error) {
-            console.error('Error generating LLM response:', error);
-            addMessageToChat("LLM", "Sorry, I couldn't generate a response.", "message-llm");
+            console.error('Error generating LLM responses:', error);
+            addMessageToChat("System", "Sorry, there was an error in the discussion.", "message-llm");
+            updateTurnIndicator('User', 'next');
         }
     }
+
+    // Add function to update turn indicator
+    function updateTurnIndicator(speaker, status = 'next') {
+        const currentTurn = document.getElementById('current-turn');
+        const speakingStatus = document.getElementById('speaking-status');
+        
+        if (status === 'speaking') {
+            currentTurn.style.color = '#FFA500';
+            // currentTurn.textContent = `Discussion in progress...`;
+            speakingStatus.textContent = `${speaker} is speaking...`;
+            speakingStatus.style.display = 'block';
+        } else {
+            if (speaker === 'User') {
+                currentTurn.textContent = `${speaker}'s turn to speak`;
+                currentTurn.style.color = '#4CAF50';
+                speakingStatus.style.display = 'none';
+            } else {
+                // currentTurn.textContent = `${speaker} speaking`;
+                currentTurn.textContent = ``;
+                currentTurn.style.color = '#2196F3';
+                speakingStatus.style.display = 'none';
+            }
+            // currentTurn.textContent = `${speaker}'s turn to speak`;
+            currentTurn.style.color = speaker === 'User' ? '#4CAF50' : '#2196F3';
+            speakingStatus.style.display = 'none';
+        }
+    }
+
+    // // Initial messages from each LLM - randomize order
+    // const initialMessages = [
+    //     { name: "ALICE", message: "Hello everyone! Let's analyze this topic systematically." },
+    //     { name: "BOB", message: "Hi! I'm excited to share some innovative perspectives." },
+    //     { name: "CHARLIE", message: "Looking forward to finding practical solutions together." }
+    // ];
+
+    // // Shuffle initial messages
+    // for (let i = initialMessages.length - 1; i > 0; i--) {
+    //     const j = Math.floor(Math.random() * (i + 1));
+    //     [initialMessages[i], initialMessages[j]] = [initialMessages[j], initialMessages[i]];
+    // }
+
+    // // Add initial messages with random delays
+    // initialMessages.forEach((msg, index) => {
+    //     setTimeout(() => {
+    //         addMessageToChat(msg.name, msg.message, "message-llm");
+    //     }, (Math.random() * 500 + 500) * (index + 1));
+    // });
+
+    // Initialize with user's turn
+    updateTurnIndicator('User');
 </script>
