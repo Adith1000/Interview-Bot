@@ -1,7 +1,7 @@
 import google.generativeai as genai
 
 # Configure the generative model
-genai.configure(api_key="AIzaSyCo0Qlg7StwWsKLrQ5UG5LTQIWqRTqTduI")
+genai.configure(api_key="AIzaSyCDrIILhOuD6KWU6QWJS1AOocStpoOWEKo")
 model = genai.GenerativeModel(model_name="gemini-1.5-flash")
 
 prompt="""Suggest a single open-ended technical topic that can be used for a debate. The topic should be thought-provoking, have multiple perspectives, and be relevant to current trends in technology or computer science.
